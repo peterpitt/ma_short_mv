@@ -123,7 +123,7 @@ jobs:
           else
             python animated-shorts-generator/scripts/upload_to_youtube.py \
               --video-url "$VIDEO_URL" \
-              "$VIDEO_TITLE" \
+              --title "$VIDEO_TITLE" \
               "${metadata_args[@]}"
           fi
 

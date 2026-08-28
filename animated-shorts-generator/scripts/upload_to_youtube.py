@@ -233,6 +233,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("video_file", nargs="?", help="Local MP4 path.")
     parser.add_argument("title", nargs="?", help="YouTube title.")
     parser.add_argument("--video-url", help="HTTPS URL to an MP4 file.")
+    parser.add_argument("--title", dest="title_option", help="YouTube title when using --video-url.")
     parser.add_argument("--description", default="", help="YouTube description.")
     parser.add_argument("--tags", default="", help="Comma-separated tags or hashtags.")
     parser.add_argument("--playlist-id", default=None, help="Optional playlist ID.")
@@ -259,17 +260,28 @@ def main() -> int:
                 raise RuntimeError("No refresh token was returned. Re-authorize locally with access_type=offline.")
             print(uploader.credentials.refresh_token)
         return 0
-    if bool(args.video_file) == bool(args.video_url):
+    title = args.title_option or args.title
+    if args.video_url and args.video_file:
+        print("Error: do not provide a positional video file together with --video-url.", file=sys.stderr)
+        return 2
+    if not args.video_url and not args.video_file:
         print("Error: provide exactly one of a local video file or --video-url.", file=sys.stderr)
         return 2
-    if not args.title:
+    if not title:
         print("Error: provide a video title.", file=sys.stderr)
         return 2
 
     temporary_path: Path | None = None
     try:
         if args.video_url:
-            temporary_path = YouTubeUploader.download_url(args.video_url)
+            if args.dry_run:
+                temp_file = tempfile.NamedTemporaryFile(prefix="youtube-dry-run-", suffix=".mp4", delete=False)
+                temp_file.write(b"dry-run")
+                temp_file.close()
+                temporary_path = Path(temp_file.name)
+                print(f"Dry run: skipped downloading {args.video_url}.")
+            else:
+                temporary_path = YouTubeUploader.download_url(args.video_url)
             video_path = temporary_path
         else:
             video_path = Path(args.video_file)
@@ -278,7 +290,7 @@ def main() -> int:
             uploader.authenticate()
         uploader.upload_video(
             str(video_path),
-            args.title,
+            title,
             args.description,
             args.tags,
             args.playlist_id,
