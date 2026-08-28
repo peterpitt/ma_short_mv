@@ -1,0 +1,20 @@
+# OAuth credentials and tokens
+client_secret.json
+.youtube-token.json
+.token.json
+token.pickle
+*.pem
+*.key
+
+# Python cache and local environments
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Generated media and local outputs
+output/
+*.mp4
+*.mp3
+*.wav
+youtube-result.json

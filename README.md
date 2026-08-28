@@ -9,6 +9,7 @@ A Manus skill for generating high-quality animated short videos (YouTube Shorts,
 - **Video Animation**: Convert static scenes into 8-10 second animated clips
 - **Text Overlays**: Add synchronized text overlays with Chinese font support
 - **YouTube-Ready Output**: Final MP4 (720x1280, H.264) optimized for YouTube Shorts
+- **One-Click YouTube Publishing**: Manually trigger a GitHub Actions workflow with secure OAuth Secrets
 
 ## Quick Start
 
@@ -44,6 +45,12 @@ animated-shorts-generator/
 ## Usage
 
 See `SKILL.md` for detailed workflow and best practices.
+
+## One-Click YouTube Publishing
+
+The repository includes `.github/workflows/publish-to-youtube.yml`. After setting `YOUTUBE_CLIENT_ID`, `YOUTUBE_CLIENT_SECRET`, and `YOUTUBE_REFRESH_TOKEN` as GitHub Actions Secrets, open **Actions → Publish to YouTube → Run workflow**. Provide either a repository-relative MP4 path or a public HTTPS MP4 URL, then choose the title, metadata, and visibility. See [`YOUTUBE_SETUP.md`](YOUTUBE_SETUP.md) for the complete OAuth setup and security notes.
+
+The workflow uses a refresh token and never performs interactive OAuth on the GitHub runner. It defaults to `unlisted` so the first upload can be checked before being made public.
 
 ## License
 

@@ -1,0 +1,154 @@
+name: Publish to YouTube
+
+on:
+  workflow_dispatch:
+    inputs:
+      video_file:
+        description: "Repository-relative MP4 path (use this or video_url)"
+        required: false
+        type: string
+      video_url:
+        description: "Public HTTPS MP4 URL (use this or video_file)"
+        required: false
+        type: string
+      title:
+        description: "YouTube video title"
+        required: true
+        type: string
+      description:
+        description: "YouTube video description"
+        required: false
+        type: string
+      tags:
+        description: "Comma-separated tags or hashtags"
+        required: false
+        type: string
+      playlist_id:
+        description: "Optional YouTube playlist ID"
+        required: false
+        type: string
+      privacy_status:
+        description: "Visibility of the uploaded video"
+        required: false
+        default: unlisted
+        type: choice
+        options:
+          - public
+          - unlisted
+          - private
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Upload video
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install YouTube client dependencies
+        run: python -m pip install --upgrade -r requirements-youtube.txt
+
+      - name: Validate video input
+        env:
+          VIDEO_FILE: ${{ inputs.video_file }}
+          VIDEO_URL: ${{ inputs.video_url }}
+        run: |
+          if [ -n "$VIDEO_FILE" ] && [ -n "$VIDEO_URL" ]; then
+            echo "Provide only one of video_file or video_url."
+            exit 1
+          fi
+          if [ -z "$VIDEO_FILE" ] && [ -z "$VIDEO_URL" ]; then
+            echo "Provide one of video_file or video_url."
+            exit 1
+          fi
+          if [ -n "$VIDEO_FILE" ]; then
+            case "$VIDEO_FILE" in
+              /*|*..*) echo "video_file must be a repository-relative safe path."; exit 1 ;;
+            esac
+            if [ ! -f "$GITHUB_WORKSPACE/$VIDEO_FILE" ]; then
+              echo "Video file not found: $VIDEO_FILE"
+              exit 1
+            fi
+            file "$GITHUB_WORKSPACE/$VIDEO_FILE"
+          fi
+          if [ -n "$VIDEO_URL" ] && [[ "$VIDEO_URL" != https://* ]]; then
+            echo "video_url must use HTTPS."
+            exit 1
+          fi
+
+      - name: Upload to YouTube
+        env:
+          YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+          YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+          VIDEO_FILE: ${{ inputs.video_file }}
+          VIDEO_URL: ${{ inputs.video_url }}
+          VIDEO_TITLE: ${{ inputs.title }}
+          VIDEO_DESCRIPTION: ${{ inputs.description }}
+          VIDEO_TAGS: ${{ inputs.tags }}
+          PLAYLIST_ID: ${{ inputs.playlist_id }}
+          PRIVACY_STATUS: ${{ inputs.privacy_status }}
+        run: |
+          if [ -z "$YOUTUBE_CLIENT_ID" ] || [ -z "$YOUTUBE_CLIENT_SECRET" ] || [ -z "$YOUTUBE_REFRESH_TOKEN" ]; then
+            echo "Missing required Actions secrets: YOUTUBE_CLIENT_ID, YOUTUBE_CLIENT_SECRET, YOUTUBE_REFRESH_TOKEN."
+            exit 1
+          fi
+
+          metadata_args=(
+            --description "$VIDEO_DESCRIPTION"
+            --tags "$VIDEO_TAGS"
+            --privacy "$PRIVACY_STATUS"
+            --result-file youtube-result.json
+          )
+          if [ -n "$PLAYLIST_ID" ]; then
+            metadata_args+=(--playlist-id "$PLAYLIST_ID")
+          fi
+
+          if [ -n "$VIDEO_FILE" ]; then
+            python animated-shorts-generator/scripts/upload_to_youtube.py \
+              "$GITHUB_WORKSPACE/$VIDEO_FILE" \
+              "$VIDEO_TITLE" \
+              "${metadata_args[@]}"
+          else
+            python animated-shorts-generator/scripts/upload_to_youtube.py \
+              --video-url "$VIDEO_URL" \
+              "$VIDEO_TITLE" \
+              "${metadata_args[@]}"
+          fi
+
+      - name: Write workflow summary
+        if: success()
+        run: |
+          VIDEO_ID=$(python -c 'import json; print(json.load(open("youtube-result.json"))["video_id"])')
+          VIDEO_URL="https://www.youtube.com/watch?v=$VIDEO_ID"
+          {
+            echo "## YouTube upload succeeded"
+            echo
+            echo "- **Title:** ${{ inputs.title }}"
+            echo "- **Visibility:** ${{ inputs.privacy_status }}"
+            echo "- **Video:** [$VIDEO_URL]($VIDEO_URL)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Write failure summary
+        if: failure()
+        run: |
+          {
+            echo "## YouTube upload failed"
+            echo
+            echo "Review the failed step logs. No OAuth token is written to the repository."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+# Required repository secrets:
+# YOUTUBE_CLIENT_ID, YOUTUBE_CLIENT_SECRET, YOUTUBE_REFRESH_TOKEN
+# The workflow intentionally does not attempt interactive OAuth in CI.
